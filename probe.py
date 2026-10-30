@@ -17,13 +17,9 @@ try:
             js = fetch(u)
         except Exception as e:
             out.append(f"{u}: {e}"); continue
-        hits = sorted(set(m for m in re.findall(r'[A-Za-z]*/?[A-Za-z]*(?:ServingLine|Grade|DailyMenu|MealType)[A-Za-z]*', js) if "/" in m or m.startswith("Get")))
-        out.append(f"{s} ({len(js)}b): {hits}")
-        for m in re.finditer(r'ServingLine', js):
-            pass
-        for kw in ("GetDailyMenuitemsByGrade", "ServingLine?", "ServingLines", "Grades?", "GetGrade"):
-            for m in list(re.finditer(kw, js))[:3]:
-                out.append(f"  ctx {kw}: {js[max(0,m.start()-250):m.end()+250]}")
+        for m in re.finditer(r'"\{API_URL\}([A-Za-z/]+)\?([^)]*)\)', js):
+            if re.search(r"Grade|Meal|Serving|School", m.group(1)) and "Menuitems" not in m.group(1):
+                out.append(f"  {m.group(1)}?{re.sub(r'encodeURIComponent', '', m.group(2))[:200]}")
 except Exception as e:
     out.append(f"err {e!r}")
 msg = "\n".join(out)[-60000:]
