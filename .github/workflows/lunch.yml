@@ -1,0 +1,17 @@
+name: Daily lunch menu
+on:
+  schedule:
+    # 13:15 UTC = 7:15am MDT / 6:15am MST, Monday–Friday
+    - cron: "15 13 * * 1-5"
+  workflow_dispatch: {}   # lets you run it manually from the Actions tab
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python lunch.py
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
