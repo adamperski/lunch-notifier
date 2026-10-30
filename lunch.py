@@ -5,7 +5,7 @@ Config via environment variables:
   NTFY_TOPIC   (required) ntfy topic name your phone is subscribed to
   DISTRICT     SchoolCafe short name            (default JEFFCOSD)
   SCHOOL       substring of the school name     (default Foster)
-  MEAL_TYPES   comma-separated meals            (default Breakfast,Lunch)
+  MEAL_TYPES   comma-separated meals            (default Lunch)
   GRADE        grade code used by SchoolCafe    (default: auto)
   SERVING_LINE serving line name                (default: auto)
   MENU_DATE    YYYY-MM-DD to override "today"   (default: today, America/Denver)
@@ -177,7 +177,7 @@ def notify(topic, title, message, at=None):
 def main():
     """Evening runs schedule tomorrow's menu for 6:30am; morning and manual runs send today's menu now."""
     topic = os.environ.get("NTFY_TOPIC") or sys.exit("Set NTFY_TOPIC")
-    meals = [m.strip() for m in os.environ.get("MEAL_TYPES", "Breakfast,Lunch").split(",")]
+    meals = [m.strip() for m in os.environ.get("MEAL_TYPES", "Lunch").split(",")]
     force = bool(os.environ.get("FORCE"))
     now = dt.datetime.now(TZ)
     send_at = None
@@ -191,7 +191,7 @@ def main():
         day = now.date()
     if day.weekday() >= 5:
         return log(f"{day} is a weekend, skipping.")
-    title = f"{day:%A}'s menu · {day:%b %-d}"
+    title = f"{day:%A}'s {meals[0].lower() if len(meals) == 1 else 'menu'} · {day:%b %-d}"
     if not force and title in ntfy_titles(topic):
         return log(f"Already sent or scheduled: {title}")
     district_id, school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
@@ -199,7 +199,8 @@ def main():
     for meal in meals:
         menu = fetch_menu(district_id, school_id, day, meal)
         if menu:
-            sections.append(f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n{format_menu(menu, meal)}")
+            header = f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n" if len(meals) > 1 else ""
+            sections.append(header + format_menu(menu, meal))
     if not sections:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
     notify(topic, title, "\n\n".join(sections), send_at)
