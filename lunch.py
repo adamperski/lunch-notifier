@@ -94,13 +94,12 @@ def parse_menu(data):
     if isinstance(data, dict):
         for cat, items in data.items():
             if isinstance(items, list) and items:
-                log(f"ITEMS {cat}: " + json.dumps([first(i, "MenuItemDescription") for i in items]))
         for cat, items in data.items():
             if isinstance(items, list):
                 names = [first(i, "MenuItemDescription", "ItemName", "Description") for i in items]
                 names = [n.strip() for n in names if n]
                 if names:
-                    menu[cat.title()] = names
+                    menu[cat] = names
     return menu
 
 
@@ -115,12 +114,40 @@ def fetch_menu(district_id, school_id, day, meal):
     return {}
 
 
+# How each SchoolCafe category is shown; None hides it (same every day).
+SECTIONS = {
+    "ENTREES": "🍽️ Main dish (pick one)",
+    "GRAINS": "🍚 Sides",
+    "VEGETABLES": "🍚 Sides",
+    "FRUITS": "🍎 Fruit",
+    "MILK": None,
+    "CONDIMENTS": None,
+}
+
+
+def format_menu(menu):
+    groups = {}
+    for cat, items in menu.items():
+        label = SECTIONS.get(cat.upper(), f"• {cat}")
+        if label:
+            groups.setdefault(label, []).extend(items)
+    lines = []
+    for label, items in groups.items():
+        if label.startswith("🍽️"):
+            lines += [label] + [f"   • {i}" for i in items]
+        else:
+            lines.append(f"{label}: {' · '.join(items)}")
+    return "\n".join(lines)
+
+
 def notify(topic, title, message):
     if os.environ.get("DRY_RUN"):
         log(f"--- DRY RUN: {title} ---\n{message}")
         return
-    req = urllib.request.Request(f"https://ntfy.sh/{topic}", data=message.encode(),
-                                 headers={"Title": title, "Tags": "fork_and_knife"})
+    payload = {"topic": topic, "title": title, "message": message, "tags": ["school"],
+               "click": f"https://www.schoolcafe.com/{os.environ.get('DISTRICT', 'JEFFCOSD')}"}
+    req = urllib.request.Request("https://ntfy.sh/", data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=30)
 
 
@@ -134,8 +161,8 @@ def main():
     menu = fetch_menu(district_id, school_id, day, meal)
     if not menu:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
-    body = "\n".join(f"{cat}: {', '.join(items)}" for cat, items in menu.items())
-    notify(topic, f"{meal} - {day:%a %b %-d}", body)
+    body = format_menu(menu)
+    notify(topic, f"{day:%A}'s {meal.lower()} · {day:%b %-d}", body)
     print(body)
 
 
