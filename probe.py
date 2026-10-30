@@ -1,8 +1,12 @@
-"""One-off: find serving-line endpoint in SchoolCafe's site code."""
+"""One-off: call GetServiceLine for Foster Elementary."""
 import re, urllib.request
-js = urllib.request.urlopen(urllib.request.Request("https://www.schoolcafe.com/main.0caeaca0860ac7ccf09a.js", headers={"User-Agent": "Mozilla/5.0"}), timeout=30).read().decode("utf-8", "replace")
-eps = sorted(set(re.findall(r'\{API_URL\}([A-Za-z/]+)', js)))
-out = ["endpoints: " + ", ".join(e for e in eps if re.search(r"Serv|Line|Calendar|Menu", e))]
-for m in list(re.finditer(r'ServingLine', js))[:12]:
-    out.append("ctx: " + js[max(0, m.start()-150):m.end()+150])
+H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+js = urllib.request.urlopen(urllib.request.Request("https://www.schoolcafe.com/main.0caeaca0860ac7ccf09a.js", headers=H), timeout=30).read().decode("utf-8", "replace")
+out = ["ctx: " + js[m.start()-100:m.end()+200] for m in re.finditer(r'GetServiceLine', js)]
+SID = "6069506d-496e-4da1-b375-d8dad5a0b8e6"
+for q in [f"schoolid={SID}&mealtype=Lunch", f"schoolid={SID}&mealtype=Lunch&startdate=10/26/2026&enddate=11/06/2026"]:
+    try:
+        out.append(q + " -> " + urllib.request.urlopen(urllib.request.Request("https://webapis.schoolcafe.com/api/GetServiceLine?" + q, headers=H), timeout=30).read().decode()[:1500])
+    except Exception as e:
+        out.append(f"{q} -> {e}")
 print("::notice title=probe::" + "\n".join(out).replace("%", "%25").replace("\n", "%0A"))
