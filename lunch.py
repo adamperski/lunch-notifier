@@ -148,8 +148,12 @@ def format_menu(menu, meal=""):
 def ntfy_titles(topic):
     """Titles of messages sent or scheduled on the topic in the last day (used to avoid duplicates)."""
     url = f"https://ntfy.sh/{topic}/json?poll=1&sched=1&since=24h"
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "lunch-notifier"}), timeout=30) as r:
-        msgs = [json.loads(line) for line in r.read().decode().splitlines() if line.strip()]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "lunch-notifier"}), timeout=30) as r:
+            msgs = [json.loads(line) for line in r.read().decode().splitlines() if line.strip()]
+    except Exception as e:  # better a duplicate than a missed menu
+        log(f"ntfy check failed: {e}")
+        return set()
     titles = {m.get("title") for m in msgs if m.get("event") == "message"}
     log(f"ntfy recent titles: {sorted(t for t in titles if t)}")
     return titles
@@ -172,7 +176,7 @@ def notify(topic, title, message, at=None):
 
 def main():
     """Evening runs schedule tomorrow's menu for 6:30am; morning and manual runs send today's menu now."""
-    topic = os.environ.get("NTFY_TOPIC") or (os.environ.get("DRY_RUN") and "dry") or sys.exit("Set NTFY_TOPIC")
+    topic = os.environ.get("NTFY_TOPIC") or sys.exit("Set NTFY_TOPIC")
     meals = [m.strip() for m in os.environ.get("MEAL_TYPES", "Breakfast,Lunch").split(",")]
     force = bool(os.environ.get("FORCE"))
     now = dt.datetime.now(TZ)
@@ -188,7 +192,7 @@ def main():
     if day.weekday() >= 5:
         return log(f"{day} is a weekend, skipping.")
     title = f"{day:%A}'s menu · {day:%b %-d}"
-    if not force and not os.environ.get("DRY_RUN") and title in ntfy_titles(topic):
+    if not force and title in ntfy_titles(topic):
         return log(f"Already sent or scheduled: {title}")
     district_id, school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
     sections = []
