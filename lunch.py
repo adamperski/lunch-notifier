@@ -67,29 +67,25 @@ def find_school(district, name):
     schools = get("GetSchoolsList", districtId=isd_id) or []
     for s in schools:
         if name.lower() in (first(s, "SchoolName", "Name") or "").lower():
-            return first(s, "SchoolId", "Id"), first(s, "SchoolName", "Name")
+            return isd_id, first(s, "SchoolId", "Id"), first(s, "SchoolName", "Name")
     sys.exit(f"No school matching {name!r}. Options: {[first(s, 'SchoolName', 'Name') for s in schools]}")
 
 
-def candidate_lines(school_id, meal, date):
+def candidate_lines(school_id, meal, day):
     if os.environ.get("SERVING_LINE"):
         return [os.environ["SERVING_LINE"]]
-    found = []
-    for path in ("CalendarView/GetServingLines", "GetServingLinesBySchoolAndMealType"):
-        data = try_get(path, SchoolId=school_id, MealType=meal, ServingDate=date)
-        if isinstance(data, list):
-            found += [x if isinstance(x, str) else first(x, "ServingLine", "Name", "ServingLineName") for x in data]
-    return [x for x in found if x] + ["Traditional Lunch", "Main Line", "Lunch", ""]
+    d = day.strftime("%m/%d/%Y")
+    data = try_get("GetServiceLine", schoolid=school_id, mealtype=meal, startdate=d, enddate=d) or []
+    found = [first(x, "ServingLineDescription") for x in data if isinstance(x, dict)]
+    return [x for x in found if x] or ["Main"]
 
 
-def candidate_grades(school_id):
+def candidate_grades(district_id):
     if os.environ.get("GRADE"):
         return [os.environ["GRADE"]]
-    data = try_get("GetSchoolGrades", schoolId=school_id)
-    found = []
-    if isinstance(data, list):
-        found = [x if isinstance(x, str) else first(x, "Grade", "GradeCode", "Name") for x in data]
-    return [x for x in found if x] + ["03", "05", "K", "01"]
+    grades = try_get("GetGradesByDistrictId", isdId=district_id) or []
+    # Elementary menus are normally identical across grades; try a few typical ones.
+    return [g for g in ("03", "01", "KG", "05") if g in grades] or grades[:3] or ["03"]
 
 
 def parse_menu(data):
@@ -105,10 +101,10 @@ def parse_menu(data):
     return menu
 
 
-def fetch_menu(school_id, date, meal):
-    for line in candidate_lines(school_id, meal, date):
-        for grade in candidate_grades(school_id):
-            data = try_get("CalendarView/GetDailyMenuitemsByGrade", SchoolId=school_id, ServingDate=date,
+def fetch_menu(district_id, school_id, day, meal):
+    for line in candidate_lines(school_id, meal, day):
+        for grade in candidate_grades(district_id):
+            data = try_get("CalendarView/GetDailyMenuitemsByGrade", SchoolId=school_id, ServingDate=day.strftime("%m/%d/%Y"),
                            ServingLine=line, MealType=meal, Grade=grade, PersonId="null")
             menu = parse_menu(data)
             if menu:
@@ -131,8 +127,8 @@ def main():
     day = dt.date.fromisoformat(os.environ["MENU_DATE"]) if os.environ.get("MENU_DATE") else dt.datetime.now(TZ).date()
     if day.weekday() >= 5:
         return print("Weekend, skipping.")
-    school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
-    menu = fetch_menu(school_id, day.strftime("%m/%d/%Y"), meal)
+    district_id, school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
+    menu = fetch_menu(district_id, school_id, day, meal)
     if not menu:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
     body = "\n".join(f"{cat}: {', '.join(items)}" for cat, items in menu.items())
