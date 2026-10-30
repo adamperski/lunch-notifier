@@ -17,3 +17,6 @@ jobs:
       - run: python lunch.py
         env:
           NTFY_TOPIC: foster-lunch-4906
+          GRADE: "01"
+          # Runs triggered by code changes don't send to the phone
+          DRY_RUN: ${{ github.event_name == 'push' && '1' || '' }}

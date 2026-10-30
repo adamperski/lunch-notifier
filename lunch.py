@@ -93,6 +93,10 @@ def parse_menu(data):
     menu = {}
     if isinstance(data, dict):
         for cat, items in data.items():
+            if isinstance(items, list) and items:
+                log(f"RAW {cat}: " + json.dumps(items[0])[:1500])
+                log(f"ITEMS {cat}: " + json.dumps([first(i, "MenuItemDescription") for i in items]))
+        for cat, items in data.items():
             if isinstance(items, list):
                 names = [first(i, "MenuItemDescription", "ItemName", "Description") for i in items]
                 names = [n.strip() for n in names if n]
@@ -114,7 +118,7 @@ def fetch_menu(district_id, school_id, day, meal):
 
 def notify(topic, title, message):
     if os.environ.get("DRY_RUN"):
-        print(f"--- {title} ---\n{message}")
+        log(f"--- DRY RUN: {title} ---\n{message}")
         return
     req = urllib.request.Request(f"https://ntfy.sh/{topic}", data=message.encode(),
                                  headers={"Title": title, "Tags": "fork_and_knife"})
