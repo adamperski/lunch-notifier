@@ -93,8 +93,6 @@ def parse_menu(data):
     menu = {}
     if isinstance(data, dict):
         for cat, items in data.items():
-            if isinstance(items, list) and items:
-        for cat, items in data.items():
             if isinstance(items, list):
                 names = [first(i, "MenuItemDescription", "ItemName", "Description") for i in items]
                 names = [n.strip() for n in names if n]
