@@ -118,20 +118,24 @@ SECTIONS = {
     "GRAINS": "Sides",
     "VEGETABLES": "Sides",
     "FRUITS": "Fruit",
+    "FRUIT-J": "Juice",
     "MILK": None,
     "CONDIMENTS": None,
 }
 
 
+# Per-meal overrides of SECTIONS.
+MEAL_SECTIONS = {"Breakfast": {"GRAINS": "Grains & cereal"}}
 MEAL_ICONS = {"Breakfast": "☀️", "Lunch": "🍽️"}
 
 
-def format_menu(menu):
+def format_menu(menu, meal=""):
+    sections = {**SECTIONS, **MEAL_SECTIONS.get(meal, {})}
     groups = {}
     for cat, items in menu.items():
-        label = SECTIONS.get(cat.upper(), cat.title())
+        label = sections.get(cat.upper(), cat.title())
         if label:
-            groups.setdefault(label, []).extend(items)
+            groups.setdefault(label, []).extend(i.removesuffix(", IW") for i in items)  # IW = individually wrapped
     lines = []
     for label, items in groups.items():
         if label.startswith("Main"):
@@ -175,7 +179,7 @@ def main():
     for meal in meals:
         menu = fetch_menu(district_id, school_id, day, meal)
         if menu:
-            sections.append(f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n{format_menu(menu)}")
+            sections.append(f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n{format_menu(menu, meal)}")
     if not sections:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
     body = "\n\n".join(sections)
