@@ -21,6 +21,19 @@ from zoneinfo import ZoneInfo
 
 API = "https://webapis.schoolcafe.com/api"
 TZ = ZoneInfo(os.environ.get("TZ_NAME", "America/Denver"))
+LOG = []
+
+
+def log(msg):
+    print(msg, file=sys.stderr)
+    LOG.append(msg)
+
+
+def flush_log():
+    """Attach the debug log to the GitHub Actions run as an annotation."""
+    if os.environ.get("GITHUB_ACTIONS") and LOG:
+        text = "\n".join(LOG)[-60000:]
+        print("::notice title=lunch debug::" + text.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
 
 
 def get(path, **params):
@@ -28,7 +41,7 @@ def get(path, **params):
     req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         body = r.read().decode()
-    print(f"GET {url} -> {body[:300]}", file=sys.stderr)
+    log(f"GET {url} -> {r.status} {body[:400]}")
     return json.loads(body) if body.strip() else None
 
 
@@ -36,7 +49,7 @@ def try_get(path, **params):
     try:
         return get(path, **params)
     except Exception as e:  # endpoint missing / changed
-        print(f"  failed: {e}", file=sys.stderr)
+        log(f"  failed: {path}: {e}")
         return None
 
 
@@ -121,11 +134,17 @@ def main():
     school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
     menu = fetch_menu(school_id, day.strftime("%m/%d/%Y"), meal)
     if not menu:
-        return print("No menu today (holiday / no school?), not notifying.")
+        return log(f"No menu for {day} (holiday / no school?), not notifying.")
     body = "\n".join(f"{cat}: {', '.join(items)}" for cat, items in menu.items())
     notify(topic, f"{school_name} {meal} – {day:%a %b %-d}", body)
     print(body)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:
+        log(f"exit: {e!r}")
+        raise
+    finally:
+        flush_log()
