@@ -145,35 +145,51 @@ def format_menu(menu, meal=""):
     return "\n".join(lines)
 
 
-def notify(topic, title, message):
+def ntfy_titles(topic):
+    """Titles of messages sent or scheduled on the topic in the last day (used to avoid duplicates)."""
+    url = f"https://ntfy.sh/{topic}/json?poll=1&sched=1&since=24h"
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "lunch-notifier"}), timeout=30) as r:
+        msgs = [json.loads(line) for line in r.read().decode().splitlines() if line.strip()]
+    titles = {m.get("title") for m in msgs if m.get("event") == "message"}
+    log(f"ntfy recent titles: {sorted(t for t in titles if t)}")
+    return titles
+
+
+def notify(topic, title, message, at=None):
+    when = f" (deliver at {at:%Y-%m-%d %H:%M %Z})" if at else ""
     if os.environ.get("DRY_RUN"):
-        log(f"--- DRY RUN: {title} ---\n{message}")
+        log(f"--- DRY RUN: {title}{when} ---\n{message}")
         return
     payload = {"topic": topic, "title": title, "message": message, "tags": ["school"],
                "click": f"https://www.schoolcafe.com/{os.environ.get('DISTRICT', 'JEFFCOSD')}"}
+    if at:
+        payload["delay"] = str(int(at.timestamp()))
     req = urllib.request.Request("https://ntfy.sh/", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=30)
-
-
-def wrong_dst_slot():
-    """The workflow fires at both 12:30 and 13:30 UTC; only the one that is 6:30am in Denver proceeds."""
-    cron = os.environ.get("SCHEDULE")  # the cron line that triggered this run, empty for manual runs
-    if not cron:
-        return False
-    utc_hour = int(cron.split()[1])
-    offset = dt.datetime.now(TZ).utcoffset().total_seconds() / 3600  # -6 in summer, -7 in winter
-    return (utc_hour + offset) % 24 != int(os.environ.get("LOCAL_HOUR", "6"))
+    log(f"Sent: {title}{when}")
 
 
 def main():
-    if wrong_dst_slot():
-        return log("Not this run's turn (daylight saving), skipping.")
+    """Evening runs schedule tomorrow's menu for 6:30am; morning and manual runs send today's menu now."""
     topic = os.environ.get("NTFY_TOPIC") or (os.environ.get("DRY_RUN") and "dry") or sys.exit("Set NTFY_TOPIC")
     meals = [m.strip() for m in os.environ.get("MEAL_TYPES", "Breakfast,Lunch").split(",")]
-    day = dt.date.fromisoformat(os.environ["MENU_DATE"]) if os.environ.get("MENU_DATE") else dt.datetime.now(TZ).date()
+    force = bool(os.environ.get("FORCE"))
+    now = dt.datetime.now(TZ)
+    send_at = None
+    if os.environ.get("MENU_DATE"):
+        day = dt.date.fromisoformat(os.environ["MENU_DATE"])
+    elif now.hour >= 12 and not force:
+        day = now.date() + dt.timedelta(days=1)
+        hour, minute = map(int, os.environ.get("SEND_TIME", "06:30").split(":"))
+        send_at = dt.datetime.combine(day, dt.time(hour, minute), TZ)
+    else:
+        day = now.date()
     if day.weekday() >= 5:
-        return print("Weekend, skipping.")
+        return log(f"{day} is a weekend, skipping.")
+    title = f"{day:%A}'s menu · {day:%b %-d}"
+    if not force and not os.environ.get("DRY_RUN") and title in ntfy_titles(topic):
+        return log(f"Already sent or scheduled: {title}")
     district_id, school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
     sections = []
     for meal in meals:
@@ -182,9 +198,7 @@ def main():
             sections.append(f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n{format_menu(menu, meal)}")
     if not sections:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
-    body = "\n\n".join(sections)
-    notify(topic, f"{day:%A}'s menu · {day:%b %-d}", body)
-    print(body)
+    notify(topic, title, "\n\n".join(sections), send_at)
 
 
 if __name__ == "__main__":
