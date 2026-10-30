@@ -94,7 +94,6 @@ def parse_menu(data):
     if isinstance(data, dict):
         for cat, items in data.items():
             if isinstance(items, list) and items:
-                log(f"RAW {cat}: " + json.dumps(items[0])[:1500])
                 log(f"ITEMS {cat}: " + json.dumps([first(i, "MenuItemDescription") for i in items]))
         for cat, items in data.items():
             if isinstance(items, list):
