@@ -1,26 +1,14 @@
-"""One-off: discover SchoolCafe API endpoints used by the guest menu page."""
-import re, urllib.request, urllib.parse
-UA = {"User-Agent": "Mozilla/5.0", "Accept": "*/*"}
+"""One-off: inspect SchoolCafe endpoints for Foster Elementary."""
+import urllib.request
+A = "https://webapis.schoolcafe.com/api/"
+SID = "6069506d-496e-4da1-b375-d8dad5a0b8e6"
 out = []
-def fetch(u):
-    return urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=30).read().decode("utf-8", "replace")
-base = "https://www.schoolcafe.com/JEFFCOSD"
-try:
-    html = fetch(base)
-    out.append(f"HTML {len(html)}: {html[:500]}")
-    srcs = re.findall(r'src="([^"]+\.js[^"]*)"', html)
-    out.append(f"scripts: {srcs}")
-    for s in srcs:
-        u = urllib.parse.urljoin("https://www.schoolcafe.com/", s)
-        if "pre-loader" in s or "polyfill" in s: continue
-        try:
-            js = fetch(u)
-        except Exception as e:
-            out.append(f"{u}: {e}"); continue
-        for m in re.finditer(r'"\{API_URL\}([A-Za-z/]+)\?([^)]*)\)', js):
-            if re.search(r"Grade|Meal|Serving|School", m.group(1)) and "Menuitems" not in m.group(1):
-                out.append(f"  {m.group(1)}?{re.sub(r'encodeURIComponent', '', m.group(2))[:200]}")
-except Exception as e:
-    out.append(f"err {e!r}")
-msg = "\n".join(out)[-60000:]
-print("::notice title=probe::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+for path in [f"GetMealType?schoolid={SID}&startdate=10/26/2026&enddate=11/06/2026",
+             "GetGradesByDistrictId?isdId=1448",
+             f"CalendarView/GetDailyMenuitems?SchoolId={SID}&ServingDate=10/28/2026&ServingLine=&MealType=Lunch"]:
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(A + path, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}), timeout=30)
+        out.append(f"{path} -> {r.read().decode()[:2500]}")
+    except Exception as e:
+        out.append(f"{path} -> {e}")
+print("::notice title=probe::" + "\n".join(out).replace("%", "%25").replace("\n", "%0A"))
