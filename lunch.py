@@ -132,7 +132,7 @@ def main():
     if not menu:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
     body = "\n".join(f"{cat}: {', '.join(items)}" for cat, items in menu.items())
-    notify(topic, f"{school_name} {meal} – {day:%a %b %-d}", body)
+    notify(topic, f"{meal} - {day:%a %b %-d}", body)
     print(body)
 
 
