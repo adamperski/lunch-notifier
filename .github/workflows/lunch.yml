@@ -1,8 +1,10 @@
 name: Daily lunch menu
 on:
   schedule:
-    # 13:15 UTC = 7:15am MDT / 6:15am MST, Monday–Friday
-    - cron: "15 13 * * 1-5"
+    # Cron is UTC-only, so fire at both 12:30 UTC (6:30am MDT) and 13:30 UTC (6:30am MST);
+    # lunch.py skips whichever one isn't 6:30am in Denver that day. Monday–Friday.
+    - cron: "30 12 * * 1-5"
+    - cron: "30 13 * * 1-5"
   workflow_dispatch: {}   # lets you run it manually from the Actions tab
   push:                   # test run whenever the code changes
     paths: ["lunch.py", ".github/workflows/lunch.yml"]
@@ -18,5 +20,6 @@ jobs:
         env:
           NTFY_TOPIC: foster-lunch-4906
           GRADE: "01"
+          SCHEDULE: ${{ github.event.schedule }}
           # Runs triggered by code changes don't send to the phone
           DRY_RUN: ${{ github.event_name == 'push' && '1' || '' }}

@@ -5,7 +5,7 @@ Config via environment variables:
   NTFY_TOPIC   (required) ntfy topic name your phone is subscribed to
   DISTRICT     SchoolCafe short name            (default JEFFCOSD)
   SCHOOL       substring of the school name     (default Foster)
-  MEAL_TYPE    Lunch / Breakfast                (default Lunch)
+  MEAL_TYPES   comma-separated meals            (default Breakfast,Lunch)
   GRADE        grade code used by SchoolCafe    (default: auto)
   SERVING_LINE serving line name                (default: auto)
   MENU_DATE    YYYY-MM-DD to override "today"   (default: today, America/Denver)
@@ -114,25 +114,28 @@ def fetch_menu(district_id, school_id, day, meal):
 
 # How each SchoolCafe category is shown; None hides it (same every day).
 SECTIONS = {
-    "ENTREES": "🍽️ Main dish (pick one)",
-    "GRAINS": "🍚 Sides",
-    "VEGETABLES": "🍚 Sides",
-    "FRUITS": "🍎 Fruit",
+    "ENTREES": "Main dish (pick one)",
+    "GRAINS": "Sides",
+    "VEGETABLES": "Sides",
+    "FRUITS": "Fruit",
     "MILK": None,
     "CONDIMENTS": None,
 }
 
 
+MEAL_ICONS = {"Breakfast": "☀️", "Lunch": "🍽️"}
+
+
 def format_menu(menu):
     groups = {}
     for cat, items in menu.items():
-        label = SECTIONS.get(cat.upper(), f"• {cat}")
+        label = SECTIONS.get(cat.upper(), cat.title())
         if label:
             groups.setdefault(label, []).extend(items)
     lines = []
     for label, items in groups.items():
-        if label.startswith("🍽️"):
-            lines += [label] + [f"   • {i}" for i in items]
+        if label.startswith("Main"):
+            lines += [label + ":"] + [f"   • {i}" for i in items]
         else:
             lines.append(f"{label}: {' · '.join(items)}")
     return "\n".join(lines)
@@ -149,18 +152,34 @@ def notify(topic, title, message):
     urllib.request.urlopen(req, timeout=30)
 
 
+def wrong_dst_slot():
+    """The workflow fires at both 12:30 and 13:30 UTC; only the one that is 6:30am in Denver proceeds."""
+    cron = os.environ.get("SCHEDULE")  # the cron line that triggered this run, empty for manual runs
+    if not cron:
+        return False
+    utc_hour = int(cron.split()[1])
+    offset = dt.datetime.now(TZ).utcoffset().total_seconds() / 3600  # -6 in summer, -7 in winter
+    return (utc_hour + offset) % 24 != int(os.environ.get("LOCAL_HOUR", "6"))
+
+
 def main():
+    if wrong_dst_slot():
+        return log("Not this run's turn (daylight saving), skipping.")
     topic = os.environ.get("NTFY_TOPIC") or (os.environ.get("DRY_RUN") and "dry") or sys.exit("Set NTFY_TOPIC")
-    meal = os.environ.get("MEAL_TYPE", "Lunch")
+    meals = [m.strip() for m in os.environ.get("MEAL_TYPES", "Breakfast,Lunch").split(",")]
     day = dt.date.fromisoformat(os.environ["MENU_DATE"]) if os.environ.get("MENU_DATE") else dt.datetime.now(TZ).date()
     if day.weekday() >= 5:
         return print("Weekend, skipping.")
     district_id, school_id, school_name = find_school(os.environ.get("DISTRICT", "JEFFCOSD"), os.environ.get("SCHOOL", "Foster"))
-    menu = fetch_menu(district_id, school_id, day, meal)
-    if not menu:
+    sections = []
+    for meal in meals:
+        menu = fetch_menu(district_id, school_id, day, meal)
+        if menu:
+            sections.append(f"{MEAL_ICONS.get(meal, '🍴')} {meal.upper()}\n{format_menu(menu)}")
+    if not sections:
         return log(f"No menu for {day} (holiday / no school?), not notifying.")
-    body = format_menu(menu)
-    notify(topic, f"{day:%A}'s {meal.lower()} · {day:%b %-d}", body)
+    body = "\n\n".join(sections)
+    notify(topic, f"{day:%A}'s menu · {day:%b %-d}", body)
     print(body)
 
 
