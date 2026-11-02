@@ -9,7 +9,13 @@ on:
     - cron: "17 5 * * 1-5"
     # Morning backup (≈6:45–7:45am Denver): sends right away only if nothing was sent.
     - cron: "47 13 * * 1-5"
-  workflow_dispatch: {}   # manual run from the Actions tab: sends today's menu immediately
+  workflow_dispatch:      # manual run from the Actions tab
+    inputs:
+      when:
+        description: "now = send today's menu immediately; schedule = queue tomorrow's for 6:30am"
+        type: choice
+        options: [now, schedule]
+        default: now
   push:                   # test run whenever the code changes
     paths: ["lunch.py", ".github/workflows/lunch.yml"]
 jobs:
@@ -25,6 +31,6 @@ jobs:
           NTFY_TOPIC: foster-lunch-4906
           GRADE: "01"
           SEND_TIME: "06:30"
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.when != 'schedule' && '1' || '' }}
           # Runs triggered by code changes don't send to the phone
           DRY_RUN: ${{ github.event_name == 'push' && '1' || '' }}
